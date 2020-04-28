@@ -3,6 +3,7 @@ package io.flutter.plugins.camera;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.ImageFormat;
+import android.graphics.PointF;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
@@ -23,6 +24,24 @@ import java.util.Map;
 public final class CameraUtils {
 
   private CameraUtils() {}
+
+  static PointF mapScreenPointToCameraPoint(PointF screenPoint, int cameraOrientation) {
+    switch (cameraOrientation) {
+      case 0:
+        return screenPoint;
+      case 90:
+        return new PointF(screenPoint.y, 1 - screenPoint.x);
+      case 180:
+        return new PointF(1 - screenPoint.x, 1 - screenPoint.y);
+      case 270:
+        return new PointF(1 - screenPoint.y, screenPoint.x);
+      default:
+        throw new IllegalArgumentException(
+            "Screen point couldn't be mapped to camera point given "
+                + cameraOrientation
+                + " as cameraOrientation argument.");
+    }
+  }
 
   static Size computeBestPreviewSize(String cameraName, ResolutionPreset preset) {
     if (preset.ordinal() > ResolutionPreset.high.ordinal()) {

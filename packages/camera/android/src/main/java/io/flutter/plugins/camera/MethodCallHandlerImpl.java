@@ -1,6 +1,7 @@
 package io.flutter.plugins.camera;
 
 import android.app.Activity;
+import android.graphics.PointF;
 import android.hardware.camera2.CameraAccessException;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -77,6 +78,20 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
           camera.takePicture(call.argument("path"), result);
           break;
         }
+      case "acquireFocus":
+        try {
+          if (camera != null) {
+            final double x = call.argument("x");
+            final double y = call.argument("y");
+
+            final PointF screenPoint = new PointF((float) x, (float) y);
+
+            camera.acquireFocus(screenPoint, call.argument("r"), result);
+          }
+        } catch (Exception e) {
+          handleException(e, result);
+        }
+        break;
       case "prepareForVideoRecording":
         {
           // This optimization is not required for Android.

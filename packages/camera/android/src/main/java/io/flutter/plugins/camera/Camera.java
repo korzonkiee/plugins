@@ -2,11 +2,14 @@ package io.flutter.plugins.camera;
 
 import static android.view.OrientationEventListener.ORIENTATION_UNKNOWN;
 import static io.flutter.plugins.camera.CameraUtils.computeBestPreviewSize;
+import static io.flutter.plugins.camera.CameraUtils.mapScreenPointToCameraPoint;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.ImageFormat;
+import android.graphics.PointF;
+import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -16,12 +19,16 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.TotalCaptureResult;
+import android.hardware.camera2.params.MeteringRectangle;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.CamcorderProfile;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaRecorder;
 import android.os.Build;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.util.Size;
 import android.view.OrientationEventListener;
 import android.view.Surface;
@@ -40,15 +47,20 @@ import java.util.List;
 import java.util.Map;
 
 public class Camera {
+  private final Activity activity;
+
   private final SurfaceTextureEntry flutterTexture;
   private final CameraManager cameraManager;
   private final OrientationEventListener orientationEventListener;
   private final boolean isFrontFacing;
+  private final boolean isMeteringAreaAFSupported;
+  private final Rect sensorActiveArraySize;
   private final int sensorOrientation;
   private final String cameraName;
   private final Size captureSize;
   private final Size previewSize;
   private final boolean enableAudio;
+  private boolean acquiringFocus = false;
 
   private CameraDevice cameraDevice;
   private CameraCaptureSession cameraCaptureSession;
@@ -56,10 +68,14 @@ public class Camera {
   private ImageReader imageStreamReader;
   private DartMessenger dartMessenger;
   private CaptureRequest.Builder captureRequestBuilder;
+
   private MediaRecorder mediaRecorder;
   private boolean recordingVideo;
   private CamcorderProfile recordingProfile;
   private int currentOrientation = ORIENTATION_UNKNOWN;
+
+  private final HandlerThread cameraHandlerThread;
+  private final Handler cameraHandler;
 
   // Mirrors camera.dart
   public enum ResolutionPreset {
@@ -82,6 +98,7 @@ public class Camera {
     if (activity == null) {
       throw new IllegalStateException("No activity available!");
     }
+    this.activity = activity;
 
     this.cameraName = cameraName;
     this.enableAudio = enableAudio;
@@ -109,11 +126,20 @@ public class Camera {
     //noinspection ConstantConditions
     isFrontFacing =
         characteristics.get(CameraCharacteristics.LENS_FACING) == CameraMetadata.LENS_FACING_FRONT;
+    isMeteringAreaAFSupported =
+        characteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF) >= 1;
+    sensorActiveArraySize =
+        characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
     ResolutionPreset preset = ResolutionPreset.valueOf(resolutionPreset);
     recordingProfile =
         CameraUtils.getBestAvailableCamcorderProfileForResolutionPreset(cameraName, preset);
     captureSize = new Size(recordingProfile.videoFrameWidth, recordingProfile.videoFrameHeight);
     previewSize = computeBestPreviewSize(cameraName, preset);
+
+    cameraHandlerThread = new HandlerThread("CameraThread");
+    cameraHandlerThread.start();
+
+    cameraHandler = new Handler(cameraHandlerThread.getLooper());
   }
 
   private void prepareMediaRecorder(String outputFilePath) throws IOException {
@@ -278,6 +304,97 @@ public class Camera {
     }
   }
 
+  public void acquireFocus(PointF screenPoint, int touchRadius, @NonNull final Result result)
+      throws CameraAccessException {
+    if (acquiringFocus) {
+      result.success(null);
+      return;
+    }
+
+    final PointF cameraPoint = mapScreenPointToCameraPoint(screenPoint, sensorOrientation);
+
+    final int x = (int) (cameraPoint.x * (float) sensorActiveArraySize.width());
+    final int y = (int) (cameraPoint.y * (float) sensorActiveArraySize.height());
+
+    MeteringRectangle focusAreaTouch =
+        new MeteringRectangle(
+            Math.max(x - touchRadius, 0),
+            Math.max(y - touchRadius, 0),
+            touchRadius * 2,
+            touchRadius * 2,
+            MeteringRectangle.METERING_WEIGHT_MAX);
+
+    CameraCaptureSession.CaptureCallback captureCallbackHandler =
+        new CameraCaptureSession.CaptureCallback() {
+          @Override
+          public void onCaptureCompleted(
+              CameraCaptureSession session, CaptureRequest req, TotalCaptureResult res) {
+            super.onCaptureCompleted(session, req, res);
+
+            acquiringFocus = false;
+
+            if (req.getTag() == "FOCUS_TAG") {
+              captureRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, null);
+              try {
+                cameraCaptureSession.setRepeatingRequest(
+                    captureRequestBuilder.build(), null, cameraHandler);
+
+                activity.runOnUiThread(new Runnable() {
+                  @Override
+                  public void run() {
+                    result.success(null);
+                  }
+                });
+              } catch (CameraAccessException e) {
+                dartMessenger.send(DartMessenger.EventType.ERROR, e.getMessage());
+
+                activity.runOnUiThread(new Runnable() {
+                  @Override
+                  public void run() {
+                    result.error("acquiringFocusFailed", e.getMessage(), null);
+                  }
+                });
+              }
+            }
+          }
+
+          @Override
+          public void onCaptureFailed(
+              CameraCaptureSession session, CaptureRequest request, CaptureFailure failure) {
+            super.onCaptureFailed(session, request, failure);
+
+            acquiringFocus = false;
+
+            dartMessenger.send(DartMessenger.EventType.ERROR, "Manual AF failure: " + failure);
+
+            activity.runOnUiThread(new Runnable() {
+              @Override
+              public void run() {
+                result.error("acquiringFocusFailed", "Manual AF failure: " + failure, null);
+              }
+            });
+          }
+        };
+
+    cameraCaptureSession.stopRepeating();
+
+    if (isMeteringAreaAFSupported) {
+      captureRequestBuilder.set(
+          CaptureRequest.CONTROL_AF_REGIONS, new MeteringRectangle[] {focusAreaTouch});
+    }
+
+    captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
+    captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO);
+    captureRequestBuilder.set(
+        CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
+    captureRequestBuilder.setTag("FOCUS_TAG");
+
+    cameraCaptureSession.capture(
+        captureRequestBuilder.build(), captureCallbackHandler, cameraHandler);
+
+    acquiringFocus = true;
+  }
+
   private void createCaptureSession(int templateType, Surface... surfaces)
       throws CameraAccessException {
     createCaptureSession(templateType, null, surfaces);
@@ -320,7 +437,8 @@ public class Camera {
               cameraCaptureSession = session;
               captureRequestBuilder.set(
                   CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
-              cameraCaptureSession.setRepeatingRequest(captureRequestBuilder.build(), null, null);
+              cameraCaptureSession.setRepeatingRequest(
+                  captureRequestBuilder.build(), null, cameraHandler);
               if (onSuccessCallback != null) {
                 onSuccessCallback.run();
               }
@@ -508,6 +626,8 @@ public class Camera {
     close();
     flutterTexture.release();
     orientationEventListener.disable();
+
+    cameraHandlerThread.quit();
   }
 
   private int getMediaOrientation() {

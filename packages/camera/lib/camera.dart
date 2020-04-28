@@ -569,6 +569,28 @@ class CameraController extends ValueNotifier<CameraValue> {
     }
   }
 
+  /// Requests camera focus on specified coordinates with given radius [r].
+  ///
+  /// Coordinates [x] and [y] are represented relatively to the camera viewport.
+  ///
+  /// Top left corner is (0, 0), center is (0.5, 0.5), bottom right corner is (1, 1).
+  Future<void> acquireFocus(double x, double y, int r) async {
+    if (!value.isInitialized || _isDisposed) {
+      throw CameraException(
+        'Uninitialized CameraController',
+        'acquireFocus was called on uninitialized CameraController',
+      );
+    }
+    try {
+      await _channel.invokeMethod<void>(
+        'acquireFocus',
+        <String, dynamic>{'x': x, 'y': y, 'r': r},
+      );
+    } on PlatformException catch (e) {
+      throw CameraException(e.code, e.message);
+    }
+  }
+
   /// Releases the resources of this camera.
   @override
   Future<void> dispose() async {

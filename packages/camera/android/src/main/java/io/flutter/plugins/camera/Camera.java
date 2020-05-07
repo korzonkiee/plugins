@@ -313,6 +313,12 @@ public class Camera {
           cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
       captureBuilder.addTarget(pictureImageReader.getSurface());
       captureBuilder.set(
+          CaptureRequest.CONTROL_AE_MODE,
+          mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AE_MODE));      
+      captureBuilder.set(
+          CaptureRequest.FLASH_MODE,
+          mPreviewRequestBuilder.get(CaptureRequest.FLASH_MODE));   
+      captureBuilder.set(
           CaptureRequest.CONTROL_AF_MODE,
           mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AF_MODE));
       captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, getMediaOrientation());
@@ -493,7 +499,7 @@ public class Camera {
       case on:
         mPreviewRequestBuilder.set(
             CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
-        mPreviewRequestBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF);
+        mPreviewRequestBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_SINGLE);
         break;
       case torch:
         mPreviewRequestBuilder.set(

@@ -92,6 +92,16 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
           handleException(e, result);
         }
         break;
+      case "setFlash":
+        try {
+          if (camera != null) {
+            final int flashMode = call.argument("flashMode");
+            camera.setFlash(Camera.FlashMode.values()[flashMode]);
+          }
+        } catch (Exception e) {
+          handleException(e, result);
+        }
+        break;
       case "prepareForVideoRecording":
         {
           // This optimization is not required for Android.

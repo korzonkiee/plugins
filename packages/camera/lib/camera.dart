@@ -38,6 +38,8 @@ enum ResolutionPreset {
   max,
 }
 
+enum FlashMode { on, off, torch, auto }
+
 // ignore: inference_failure_on_function_return_type
 typedef onLatestImageAvailable = Function(CameraImage image);
 
@@ -245,10 +247,12 @@ class CameraController extends ValueNotifier<CameraValue> {
     this.description,
     this.resolutionPreset, {
     this.enableAudio = true,
+    this.flashMode = FlashMode.off,
   }) : super(const CameraValue.uninitialized());
 
   final CameraDescription description;
   final ResolutionPreset resolutionPreset;
+  final FlashMode flashMode;
 
   /// Whether to include audio when recording a video.
   final bool enableAudio;
@@ -585,6 +589,24 @@ class CameraController extends ValueNotifier<CameraValue> {
       await _channel.invokeMethod<void>(
         'acquireFocus',
         <String, dynamic>{'x': x, 'y': y, 'r': r},
+      );
+    } on PlatformException catch (e) {
+      throw CameraException(e.code, e.message);
+    }
+  }
+
+  /// Sets flash mode
+  Future<void> setFlash(FlashMode flash) async {
+    if (!value.isInitialized || _isDisposed) {
+      throw CameraException(
+        'Uninitialized CameraController',
+        'setFlash was called on uninitialized CameraController',
+      );
+    }
+    try {
+      await _channel.invokeMethod<void>(
+        'setFlash',
+        <String, dynamic>{'flashMode': flash.index},
       );
     } on PlatformException catch (e) {
       throw CameraException(e.code, e.message);

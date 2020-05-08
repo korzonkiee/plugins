@@ -314,16 +314,13 @@ public class Camera {
       captureBuilder.addTarget(pictureImageReader.getSurface());
       captureBuilder.set(
           CaptureRequest.CONTROL_AE_MODE,
-          mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AE_MODE));      
-      captureBuilder.set(
-          CaptureRequest.FLASH_MODE,
-          mPreviewRequestBuilder.get(CaptureRequest.FLASH_MODE));   
+          mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AE_MODE));
       captureBuilder.set(
           CaptureRequest.CONTROL_AF_MODE,
           mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AF_MODE));
       captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, getMediaOrientation());
 
-      updateFlash();
+      updateFlash(captureBuilder);
 
       mCaptureSession.stopRepeating();
       mCaptureSession.capture(
@@ -384,7 +381,7 @@ public class Camera {
     try {
       mCaptureSession.capture(mPreviewRequestBuilder.build(), mCaptureCallback, null);
       updateAutoFocus();
-      updateFlash();
+      updateFlash(mPreviewRequestBuilder);
 
       mPreviewRequestBuilder.set(
           CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
@@ -478,7 +475,7 @@ public class Camera {
     FlashMode saved = mFlash;
     mFlash = flash;
     if (mPreviewRequestBuilder != null) {
-      updateFlash();
+      updateFlash(mPreviewRequestBuilder);
       if (mCaptureSession != null) {
         try {
           mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), null, null);
@@ -489,27 +486,27 @@ public class Camera {
     }
   }
 
-  void updateFlash() {
+  void updateFlash(CaptureRequest.Builder builder) {
     switch (mFlash) {
       case off:
-        mPreviewRequestBuilder.set(
+        builder.set(
             CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
-        mPreviewRequestBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF);
+        builder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF);
         break;
       case on:
-        mPreviewRequestBuilder.set(
+        builder.set(
             CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH);
-        mPreviewRequestBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_SINGLE);
+        builder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_SINGLE);
         break;
       case torch:
-        mPreviewRequestBuilder.set(
+        builder.set(
             CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
-        mPreviewRequestBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH);
+        builder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH);
         break;
       case auto:
-        mPreviewRequestBuilder.set(
+        builder.set(
             CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
-        mPreviewRequestBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF);
+        builder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF);
         break;
       default:
         break;

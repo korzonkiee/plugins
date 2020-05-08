@@ -19,6 +19,7 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.MeteringRectangle;
 import android.hardware.camera2.params.StreamConfigurationMap;
@@ -380,7 +381,8 @@ public class Camera {
         CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
     try {
       mCaptureSession.capture(mPreviewRequestBuilder.build(), mCaptureCallback, null);
-      updateAutoFocus();
+
+      updateAutoFocus(mPreviewRequestBuilder);
       updateFlash(mPreviewRequestBuilder);
 
       mPreviewRequestBuilder.set(
@@ -519,7 +521,7 @@ public class Camera {
     }
     mAutoFocus = autoFocus;
     if (mPreviewRequestBuilder != null) {
-      updateAutoFocus();
+      updateAutoFocus(mPreviewRequestBuilder);
       if (mCaptureSession != null) {
         try {
           mCaptureSession.setRepeatingRequest(
@@ -532,7 +534,7 @@ public class Camera {
   }
 
   /** Updates the internal state of auto-focus to {@link #mAutoFocus}. */
-  void updateAutoFocus() {
+  void updateAutoFocus(CaptureRequest.Builder builder) {
     if (mAutoFocus) {
       int[] modes = mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
       // Auto focus is not supported
@@ -540,14 +542,14 @@ public class Camera {
           || modes.length == 0
           || (modes.length == 1 && modes[0] == CameraCharacteristics.CONTROL_AF_MODE_OFF)) {
         mAutoFocus = false;
-        mPreviewRequestBuilder.set(
+        builder.set(
             CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
       } else {
-        mPreviewRequestBuilder.set(
+        builder.set(
             CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
       }
     } else {
-      mPreviewRequestBuilder.set(
+      builder.set(
           CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
     }
   }
